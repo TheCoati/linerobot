@@ -37,18 +37,18 @@ const int NUMBERS[10][7] = {
 };
 
 // Configuration
-const int FINISH_DETECTED_DELAY = 200;       // How long the sensor should detect full black to trigger finish.
+const int FINISH_DETECTED_DELAY = 1000;       // How long the sensor should detect full black to trigger finish.
 const int DEFAULT_LEFT_SPEED = 75;           // Default left engine speed in forward motion.
 const int DEFAULT_RIGHT_SPEED = 60;          // Default right engine speed in forward motion.
 const int TURN_SPEED = 80;                   // Speed while turning.
 const int ADJUST_SPEED = 40;                 // Speed while adjusting.
 const int ROTATE_SPEED = 50;                 // Speed while turning around on both engine.
-const int ROTATE_ON_OBJECT_DISTANCE = 5.0;   // Object distance to trigger turn around.
+const int ROTATE_ON_OBJECT_DISTANCE = 8.0;   // Object distance to trigger turn around.
 const int DISPLAY_MULTIPLEX_DELAY = 1;       // Delay between displays for multiplexing.
 
 enum Sensors
 {
-    SENSOR_1 = (1 << 0), // 1
+    SENSOR_1 = (1 << 0), // 1 
     SENSOR_2 = (1 << 1), // 2
     SENSOR_3 = (1 << 2), // 4
     SENSOR_4 = (1 << 3), // 8
@@ -130,7 +130,7 @@ bool detectObject()
         lastPingSensorUpdate = millis();
         double distance = distanceSensor.measureDistanceCm();
 
-        hasDetectedObject = distance <= ROTATE_ON_OBJECT_DISTANCE;
+        hasDetectedObject = distance <= ROTATE_ON_OBJECT_DISTANCE && distance > 0;
     }
 
     return hasDetectedObject;
@@ -155,6 +155,7 @@ void moveForward()
  */
 void adjustLeft()
 {
+    digitalWrite(LEFT_DIRECTION_PIN, HIGH);
     digitalWrite(RIGHT_DIRECTION_PIN, LOW);
 
     analogWrite(LEFT_PWM_PIN, 0);
@@ -169,6 +170,7 @@ void adjustLeft()
  */
 void adjustRight()
 {
+    digitalWrite(LEFT_DIRECTION_PIN, HIGH);
     digitalWrite(RIGHT_DIRECTION_PIN, LOW);
 
     analogWrite(LEFT_PWM_PIN, ADJUST_SPEED);
@@ -183,6 +185,7 @@ void adjustRight()
  */
 void turnLeft()
 {
+    digitalWrite(LEFT_DIRECTION_PIN, HIGH);
     digitalWrite(RIGHT_DIRECTION_PIN, LOW);
 
     analogWrite(LEFT_PWM_PIN, 0);
@@ -194,6 +197,7 @@ void turnLeft()
  */
 void turnRight()
 {
+    digitalWrite(LEFT_DIRECTION_PIN, HIGH);
     digitalWrite(RIGHT_DIRECTION_PIN, LOW);
 
     analogWrite(LEFT_PWM_PIN, TURN_SPEED);
@@ -205,8 +209,8 @@ void turnRight()
  */
 void turnAround()
 {
-    digitalWrite(LEFT_DIRECTION_PIN, LOW);
-    digitalWrite(RIGHT_DIRECTION_PIN, LOW);
+    digitalWrite(LEFT_DIRECTION_PIN, HIGH);
+    digitalWrite(RIGHT_DIRECTION_PIN, HIGH);
 
     analogWrite(LEFT_PWM_PIN, ROTATE_SPEED);
     analogWrite(RIGHT_PWM_PIN, ROTATE_SPEED);
@@ -233,12 +237,18 @@ bool checkFinish()
 
     unsigned long timePassed = now - finishDetectedTime;
 
-    return timePassed >= FINISH_DETECTED_DELAY;
+    if (timePassed >= FINISH_DETECTED_DELAY) {
+        stop();
+    };
 }
 
+
+
 void setup()
+
 {
     Serial.end(); // Disable Serial
+    // Serial.begin(9600);
 
     TCCR2B = TCCR2B & B11111000 | B00000111;
 
@@ -283,31 +293,39 @@ void loop()
     // Ping sensor
     if (detectObject()) {
         turnAround();
+        delay(500);
         return;
     }
 
-    // Line sensor
-    int sensor1 = digitalRead(SENSOR_PINS[0]) == LOW ? SENSOR_1 : 0;
-    int sensor2 = digitalRead(SENSOR_PINS[1]) == LOW ? SENSOR_2 : 0;
-    int sensor3 = digitalRead(SENSOR_PINS[2]) == LOW ? SENSOR_3 : 0;
-    int sensor4 = digitalRead(SENSOR_PINS[3]) == LOW ? SENSOR_4 : 0;
-    int sensor5 = digitalRead(SENSOR_PINS[4]) == LOW ? SENSOR_5 : 0;
+   // Line sensor
+   int sensor1 = digitalRead(SENSOR_PINS[0]) == LOW ? SENSOR_1 : 0;
+   int sensor2 = digitalRead(SENSOR_PINS[1]) == LOW ? SENSOR_2 : 0;
+   int sensor3 = digitalRead(SENSOR_PINS[2]) == LOW ? SENSOR_3 : 0;
+   int sensor4 = digitalRead(SENSOR_PINS[3]) == LOW ? SENSOR_4 : 0;
+   int sensor5 = digitalRead(SENSOR_PINS[4]) == LOW ? SENSOR_5 : 0;
 
-    const int state = (sensor1 | sensor2 | sensor3 | sensor4 | sensor5);
+   const int state = (sensor1 | sensor2 | sensor3 | sensor4 | sensor5);
+
+    // If state was not detecting the finish reset the finish detection timer
+    if (state != (SENSOR_1 | SENSOR_2 | SENSOR_3 | SENSOR_4 | SENSOR_5)) {
+        finishDetectedTime = 0;
+    }
 
     switch (state) {
         case (SENSOR_1 | SENSOR_2 | SENSOR_3 | SENSOR_4 | SENSOR_5):
-            if (checkFinish()) {
-                stop();
-            }
+            checkFinish();
             break;
         case (SENSOR_3):
             moveForward();
             break;
-        case (SENSOR_1 | SENSOR_2 | SENSOR_3):
+        case (SENSOR_1 | SENSOR_2 | SENSOR_3):   
+        case (SENSOR_1 | SENSOR_2): 
+        case (SENSOR_1):
             turnLeft();
             break;
         case (SENSOR_3 | SENSOR_4 | SENSOR_5):
+        case (SENSOR_4 | SENSOR_5):    
+        case (SENSOR_5):
             turnRight();
             break;
         case (SENSOR_2):
@@ -323,40 +341,5 @@ void loop()
             break;
         default: // Hand of wall - Always right
             turnRight();
-    }
-
-//    int sensor1 = digitalRead(SENSOR_PINS[0]);
-//    int sensor2 = digitalRead(SENSOR_PINS[1]);
-//    int sensor3 = digitalRead(SENSOR_PINS[2]);
-//    int sensor4 = digitalRead(SENSOR_PINS[3]);
-//    int sensor5 = digitalRead(SENSOR_PINS[4]);
-//
-//    if (sensor1 == LOW && sensor2 == LOW && sensor3 == LOW && sensor4 == LOW && sensor5 == LOW) {
-//        if (checkFinish()) {
-//            stop();
-//        }
-//    } else if (sensor1 == HIGH && sensor2 == HIGH && sensor3 == LOW && sensor4 == HIGH && sensor5 == HIGH) {
-//        moveForward();
-//    } else if (sensor1 == LOW && sensor2 == LOW && sensor3 == LOW && sensor4 == HIGH && sensor5 == HIGH) {
-//        turnLeft();
-//    } else if (sensor1 == HIGH && sensor2 == HIGH && sensor3 == LOW && sensor4 == LOW && sensor5 == LOW) {
-//        turnRight();
-//    } else if (sensor1 == HIGH && sensor2 == LOW && sensor3 == LOW && sensor4 == HIGH && sensor5 == HIGH) {
-//        adjustLeft();
-//    } else if (sensor1 == HIGH && sensor2 == HIGH && sensor3 == LOW && sensor4 == LOW && sensor5 == HIGH) {
-//        adjustRight();
-//    } else if (sensor1 == HIGH && sensor2 == HIGH && sensor3 == HIGH && sensor4 == HIGH && sensor5 == HIGH) {
-//        turnAround();
-//    } else if (sensor1 == HIGH && sensor2 == LOW && sensor3 == HIGH && sensor4 == HIGH && sensor5 == HIGH){
-//        adjustLeft();
-//    } else if (sensor1 == HIGH && sensor2 == HIGH && sensor3 == HIGH && sensor4 == LOW && sensor5 == HIGH) {
-//        adjustRight();
-//    } else {
-//        turnRight();
-//    }
-
-    // If state was not detecting the finish reset the finish detection timer
-    if (state != (SENSOR_1 | SENSOR_2 | SENSOR_3 | SENSOR_4 | SENSOR_5)) {
-        finishDetectedTime = 0;
     }
 }
